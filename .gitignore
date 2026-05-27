@@ -1,0 +1,58 @@
+# Секреты и локальная конфигурация
+.env
+.env.local
+.env.*.local
+
+# Шаблоны с заполненными ключами (если переименовали)
+.env.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Виртуальное окружение
+venv/
+.venv/
+env/
+ENV/
+
+# IDE и редакторы
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ОС
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Логи и временные файлы
+*.log
+*.tmp
+.cache/
+
+# Jupyter / pytest
+.pytest_cache/
+.coverage
+htmlcov/

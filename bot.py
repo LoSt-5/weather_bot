@@ -1,7 +1,8 @@
 import os
 import logging
+from html import escape
 from dotenv import load_dotenv
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 import aiohttp
 
@@ -21,7 +22,8 @@ dp = Dispatcher()
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer(
-        "Привет! Отправь мне свою геолокацию, и я скажу текущую погоду в этом месте."
+        "Привет! Отправь мне свою геолокацию или напиши название города, района или адреса, "
+        "и я скажу текущую погоду в этом месте."
     )
 
 # Обработчик геолокации
@@ -29,15 +31,13 @@ async def cmd_start(message: types.Message):
 async def handle_location(message: types.Message):
     lat = message.location.latitude
     lon = message.location.longitude
+    await bot.send_chat_action(chat_id=message.chat.id, action="typing")
 
-    await message.answer("🔍 Получаю данные о погоде...")
-
-    # Формируем запрос к WeatherAPI
     url = "http://api.weatherapi.com/v1/current.json"
     params = {
         "key": WEATHER_API_KEY,
         "q": f"{lat},{lon}",
-        "lang": "ru"  # опционально: язык ответа (если поддерживается)
+        "lang": "ru"
     }
 
     async with aiohttp.ClientSession() as session:
@@ -52,28 +52,63 @@ async def handle_location(message: types.Message):
             logging.error(f"Ошибка при запросе к API: {e}")
             await message.answer("⚠️ Произошла ошибка при обращении к сервису погоды.")
 
+# Обработчик текстовых сообщений (названия городов, адресов)
+@dp.message(F.text)
+async def handle_text(message: types.Message):
+    query = message.text.strip()
+    # Игнорируем команды (начинающиеся с '/'), чтобы не слать их как запрос погоды
+    if not query or query.startswith('/'):
+        return
+
+    await bot.send_chat_action(chat_id=message.chat.id, action="typing")
+
+    url = "http://api.weatherapi.com/v1/current.json"
+    params = {
+        "key": WEATHER_API_KEY,
+        "q": query,
+        "lang": "ru"
+    }
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, params=params) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    await send_weather_info(message, data)
+                else:
+                    # Пытаемся извлечь сообщение об ошибке из API
+                    try:
+                        error_data = await resp.json()
+                        error_msg = error_data.get("error", {}).get("message", "Неизвестная ошибка")
+                    except Exception:
+                        error_msg = "Не удалось получить данные"
+                    await message.answer(f"❌ {error_msg}")
+        except Exception as e:
+            logging.error(f"Ошибка при запросе к API: {e}")
+            await message.answer("⚠️ Произошла ошибка при обращении к сервису погоды.")
+
 async def send_weather_info(message: types.Message, data: dict):
     """Формирует и отправляет сообщение с погодой."""
     try:
-        location = data["location"]["name"]
-        country = data["location"]["country"]
+        location = escape(data["location"]["name"])
+        country = escape(data["location"]["country"])
         temp_c = data["current"]["temp_c"]
-        condition = data["current"]["condition"]["text"]
+        condition = escape(data["current"]["condition"]["text"])
         feelslike_c = data["current"]["feelslike_c"]
         humidity = data["current"]["humidity"]
         wind_kph = data["current"]["wind_kph"]
-        wind_dir = data["current"]["wind_dir"]
-        last_updated = data["current"]["last_updated"]
+        wind_dir = escape(data["current"]["wind_dir"])
+        last_updated = escape(data["current"]["last_updated"])
 
         text = (
-            f"🌍 *{location}, {country}*\n"
+            f"🌍 <b>{location}, {country}</b>\n"
             f"🌡 Температура: {temp_c}°C (ощущается как {feelslike_c}°C)\n"
             f"☁️ {condition}\n"
             f"💧 Влажность: {humidity}%\n"
             f"💨 Ветер: {wind_kph} км/ч, направление {wind_dir}\n"
             f"🕒 Обновлено: {last_updated}"
         )
-        await message.answer(text, parse_mode="Markdown")
+        await message.answer(text, parse_mode="HTML")
     except KeyError as e:
         logging.error(f"Ошибка парсинга ответа: {e}")
         await message.answer("⚠️ Не удалось обработать данные о погоде.")
